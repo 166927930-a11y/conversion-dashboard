@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>期次对比 + 个人排名 - 转化数据看板</title>
+<link rel="stylesheet" href="assets.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="topbar">
+  <h1>期次对比 + 个人排名</h1>
+  <div class="sub" id="subtitle">加载中...</div>
+</div>
+<nav class="nav">
+  <a href="index.html">总览驾驶舱</a>
+  <a href="teacher.html">班主任本期表现</a>
+  <a href="period.html" class="active">期次对比 + 个人排名</a>
+</nav>
+<div class="wrap">
+  <div id="app"><div class="loading">正在加载数据...</div></div>
+</div>
+<script src="common.js"></script>
+<script>
+(async function(){
+  const D = await loadData();
+  if(!D){ document.getElementById('app').innerHTML='<div class="empty">数据未加载</div>'; return; }
+  document.getElementById('subtitle').textContent=`${D.meta.period} · 数据更新于 ${D.meta.generated}`;
+  const ts=D.teachers||[];
+
+  // 期次汇总
+  const byBoard={};
+  ts.forEach(t=>{
+    const k=t.code;
+    if(!byBoard[k]) byBoard[k]={code:k,label:t.label,order:0,ref30:0,ref90:0,cnt:0,teachers:new Set()};
+    byBoard[k].order+=t.order_amt||0;
+    byBoard[k].ref30+=t.ref_amt30||0;
+    byBoard[k].ref90+=t.ref_amt90||0;
+    byBoard[k].cnt+=t.order_cnt||0;
+    byBoard[k].teachers.add(t.teacher);
+  });
+  const boards=Object.values(byBoard).sort((a,b)=>a.code.localeCompare(b.code));
+  const labels=boards.map(b=>b.code.slice(0,4));
+
+  // 个人累计（跨期次汇总，30天口径）
+  const byTeacher={};
+  ts.forEach(t=>{
+    const k=t.teacher;
+    if(!byTeacher[k]) byTeacher[k]={name:k,order:0,ref:0,cnt:0,periods:0};
+    byTeacher[k].order+=t.order_amt||0;
+    byTeacher[k].ref+=t.ref_amt30||0;
+    byTeacher[k].cnt+=t.order_cnt||0;
+    byTeacher[k].periods+=1;
+  });
+  const ranks=Object.values(byTeacher).sort((a,b)=>b.order-a.order);
+
+  document.getElementById('app').innerHTML=`
+    <div class="card">
+      <h3>各期次出单 / 退款 / 净业绩对比</h3>
+      <div class="chart-box tall"><canvas id="chartCompare"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>各期次明细</h3>
+      <div class="scroll"><table><thead><tr>
+        <th class="l">期次</th><th>班主任数</th><th>归属出单额</th><th>出单数</th>
+        <th>退款30天</th><th>退款90天</th><th>净业绩30</th><th>净业绩90</th>
+      </tr></thead><tbody>
+      ${boards.map(b=>`<tr>
+        <td class="l"><b>${esc(b.code)}</b></td>
+        <td>${b.teachers.size}</td>
+        <td class="pos">¥${fmtNum(b.order)}</td>
+        <td>${b.cnt}</td>
+        <td class="neg">¥${fmtNum(b.ref30)}</td>
+        <td class="neg">¥${fmtNum(b.ref90)}</td>
+        <td class="${b.order-b.ref30>=0?'pos':'neg'}">¥${fmtNum(b.order-b.ref30)}</td>
+        <td class="${b.order-b.ref90>=0?'pos':'neg'}">¥${fmtNum(b.order-b.ref90)}</td>
+      </tr>`).join('')}
+      </tbody></table></div>
+    </div>
+    <div class="card">
+      <h3>班主任累计排名（按归属出单额）</h3>
+      <div class="scroll"><table><thead><tr>
+        <th>排名</th><th class="l">班主任</th><th>累计出单额</th><th>累计单数</th>
+        <th>累计退款30</th><th>累计净业绩</th><th>带班期数</th>
+      </tr></thead><tbody>
+      ${ranks.map((r,i)=>`<tr>
+        <td>${i+1}</td>
+        <td class="l"><b>${esc(r.name)}</b></td>
+        <td class="pos">¥${fmtNum(r.order)}</td>
+        <td>${r.cnt}</td>
+        <td class="neg">¥${fmtNum(r.ref)}</td>
+        <td class="${r.order-r.ref>=0?'pos':'neg'}">¥${fmtNum(r.order-r.ref)}</td>
+        <td>${r.periods}</td>
+      </tr>`).join('')}
+      </tbody></table></div>
+    </div>`;
+
+  new Chart(document.getElementById('chartCompare'),{
+    type:'bar',
+    data:{labels,datasets:[
+      {label:'出单金额',data:boards.map(b=>Math.round(b.order)),backgroundColor:'#d92626',borderRadius:3},
+      {label:'退款30天',data:boards.map(b=>Math.round(b.ref30)),backgroundColor:'#0e9f6e',borderRadius:3},
+      {label:'退款90天',data:boards.map(b=>Math.round(b.ref90)),backgroundColor:'#7c3aed',borderRadius:3}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:'top'}},
+      scales:{y:{ticks:{callback:v=>'¥'+(v/1000)+'k'}}}}
+  });
+})();
+</script>
+</body>
+</html>

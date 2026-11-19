@@ -92,7 +92,7 @@
   const tbody = document.querySelector('#tblTop tbody');
   tbody.innerHTML = top.map(t=>`<tr>
     <td class="l"><b>${esc(t.teacher)}</b></td>
-    <td class="l">${esc(t.label)} ${esc(t.group||'')}</td>
+    <td class="l">${esc(t.label)} ${esc(t.group_full||t.group||'')}</td>
     <td class="l">${t.start_str}~${t.end_str}</td>
     <td class="pos">¥${fmtNum(t.order_amt)}</td>
     <td>${t.order_cnt}</td>

@@ -1,0 +1,76 @@
+:root {
+  --bg: #f5f7fa;
+  --card: #ffffff;
+  --border: #e4e8ee;
+  --text: #1f2733;
+  --muted: #7a8699;
+  --primary: #2563eb;
+  --primary-soft: #eff4ff;
+  --red: #d92626;      /* 涨/正向 - 中国习惯红 */
+  --green: #0e9f6e;    /* 跌/负向 - 中国习惯绿 */
+  --accent: #7c3aed;
+  --shadow: 0 1px 3px rgba(16,24,40,.06), 0 1px 2px rgba(16,24,40,.04);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5;
+  padding: 0 0 60px;
+}
+.topbar {
+  background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
+  color: #fff; padding: 20px 32px; box-shadow: 0 2px 8px rgba(30,58,138,.2);
+}
+.topbar h1 { font-size: 22px; font-weight: 700; letter-spacing: .5px; }
+.topbar .sub { font-size: 12px; opacity: .85; margin-top: 4px; }
+.nav { display: flex; gap: 6px; background: #fff; border-bottom: 1px solid var(--border); padding: 0 32px; position: sticky; top: 0; z-index: 10; }
+.nav a {
+  display: inline-block; padding: 12px 18px; color: var(--muted); text-decoration: none;
+  font-weight: 600; border-bottom: 2px solid transparent; transition: .15s;
+}
+.nav a:hover { color: var(--primary); }
+.nav a.active { color: var(--primary); border-bottom-color: var(--primary); }
+.wrap { max-width: 1440px; margin: 0 auto; padding: 24px 32px; }
+.page-head { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
+.page-head h2 { font-size: 20px; font-weight: 700; }
+.page-head .meta { color: var(--muted); font-size: 12px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 22px; }
+.kpi { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; box-shadow: var(--shadow); }
+.kpi .label { color: var(--muted); font-size: 13px; }
+.kpi .val { font-size: 28px; font-weight: 700; margin: 8px 0 2px; letter-spacing: -.5px; }
+.kpi .delta { font-size: 12px; color: var(--muted); }
+.kpi.red .val { color: var(--red); }
+.kpi.green .val { color: var(--green); }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; box-shadow: var(--shadow); margin-bottom: 20px; }
+.card h3 { font-size: 15px; font-weight: 700; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+.card h3::before { content: ''; width: 3px; height: 15px; background: var(--primary); border-radius: 2px; }
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 20px; }
+.chart-box { position: relative; height: 320px; }
+.chart-box.tall { height: 420px; }
+.controls { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; align-items: center; }
+.controls select, .controls input {
+  padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px;
+  background: #fff; color: var(--text); outline: none;
+}
+.controls select:focus, .controls input:focus { border-color: var(--primary); }
+.controls label { color: var(--muted); font-size: 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 10px 12px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th { background: #f8fafc; color: var(--muted); font-weight: 600; position: sticky; top: 0; }
+th:first-child, td:first-child, th.l, td.l { text-align: left; }
+tr:hover td { background: #f8fafc; }
+.pos { color: var(--red); font-weight: 600; }
+.neg { color: var(--green); font-weight: 600; }
+.tag { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+.tag-a { background: #eef2ff; color: #4338ca; }
+.tag-b { background: #f0fdf4; color: #15803d; }
+.tag-c { background: #fff7ed; color: #c2410c; }
+.tag-warn { background: #fef2f2; color: var(--red); }
+.scroll { overflow: auto; max-height: 620px; }
+.empty { color: var(--muted); text-align: center; padding: 40px; }
+.loading { color: var(--muted); padding: 40px; text-align: center; }
+.footnote { color: var(--muted); font-size: 11px; margin-top: 8px; }
+@media (max-width: 768px) {
+  .topbar, .nav, .wrap { padding-left: 16px; padding-right: 16px; }
+  .kpi .val { font-size: 22px; }
+}

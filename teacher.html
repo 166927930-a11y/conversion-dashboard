@@ -19,7 +19,8 @@
 <div class="wrap">
   <div class="controls">
     <label>期次</label><select id="selBoard"></select>
-    <label>组</label><select id="selGroup"><option value="">全部</option><option value="A">A组</option><option value="B">B组</option><option value="C">C组</option></select>
+    <label>城市</label><select id="selCity"><option value="">全部</option></select>
+    <label>小组</label><select id="selGroup"><option value="">全部</option></select>
     <label>班主任</label><input id="inpName" placeholder="搜索姓名" style="width:140px">
     <label>退款口径</label><select id="selRefund"><option value="30">30天</option><option value="90">90天</option></select>
     <span id="cntInfo" style="color:var(--muted);font-size:12px;margin-left:auto"></span>
@@ -42,19 +43,38 @@ const procCols = [
   const sel=document.getElementById('selBoard');
   sel.innerHTML='<option value="">全部期次</option>'+[...new Set(D.teachers.map(t=>t.code))]
     .sort().map(c=>`<option value="${c}">${esc(c)}</option>`).join('');
+  // 城市下拉
+  const citySel=document.getElementById('selCity');
+  const cities=[...new Set(D.teachers.map(t=>t.city).filter(Boolean))].sort();
+  citySel.innerHTML='<option value="">全部城市</option>'+cities.map(c=>`<option value="${c}">${esc(c)}</option>`).join('');
+  // 小组下拉（group_full 具体小组名，如 深圳B2 / 武汉1 / 店播天选B）
+  fillGroups();
+  citySel.addEventListener('change',fillGroups);
   ['selBoard','selGroup','inpName','selRefund'].forEach(id=>{
     document.getElementById(id).addEventListener('input',render);
   });
   render();
 })();
 
+function fillGroups(){
+  const city=document.getElementById('selCity').value;
+  const sel=document.getElementById('selGroup');
+  const prev=sel.value;
+  const groups=[...new Set(D.teachers.filter(t=>!city||t.city===city).map(t=>t.group_full).filter(Boolean))]
+    .sort((a,b)=>a.localeCompare(b,'zh'));
+  sel.innerHTML='<option value="">全部小组</option>'+groups.map(g=>`<option value="${g}">${esc(g)}</option>`).join('');
+  if(groups.includes(prev)) sel.value=prev;
+}
+
 function render(){
   const board=document.getElementById('selBoard').value;
+  const city=document.getElementById('selCity').value;
   const group=document.getElementById('selGroup').value;
   const name=document.getElementById('inpName').value.trim();
   const口径=document.getElementById('selRefund').value;
   let list=D.teachers.filter(t=>
-    (!board||t.code===board) && (!group||(t.board_group||'')===group) && (!name||t.teacher.includes(name))
+    (!board||t.code===board) && (!city||(t.city||'')===city) &&
+    (!group||(t.group_full||'')===group) && (!name||t.teacher.includes(name))
   );
   list.sort((a,b)=>(b.order_amt||0)-(a.order_amt||0));
   document.getElementById('cntInfo').textContent=`共 ${list.length} 条记录`;
@@ -67,7 +87,7 @@ function render(){
   let rows = list.map(t=>`<tr>
     <td class="l"><b>${esc(t.teacher)}</b></td>
     <td class="l">${esc(t.label)}</td>
-    <td class="l">${esc(t.board_group||'')}组 / ${esc(t.group||'')}</td>
+    <td class="l">${esc(t.group_full||t.group||'-')}</td>
     <td class="l">${t.start_str}~${t.end_str}</td>
     ${procCols.map(c=>`<td>${esc(t[c[0]]||'-')}</td>`).join('')}
     <td class="pos">¥${fmtNum(t.order_amt)}</td>

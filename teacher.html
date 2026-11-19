@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>班主任本期表现 - 转化数据看板</title>
+<link rel="stylesheet" href="assets.css">
+</head>
+<body>
+<div class="topbar">
+  <h1>班主任本期表现</h1>
+  <div class="sub" id="subtitle">加载中...</div>
+</div>
+<nav class="nav">
+  <a href="index.html">总览驾驶舱</a>
+  <a href="teacher.html" class="active">班主任本期表现</a>
+  <a href="period.html">期次对比 + 个人排名</a>
+</nav>
+<div class="wrap">
+  <div class="controls">
+    <label>期次</label><select id="selBoard"></select>
+    <label>组</label><select id="selGroup"><option value="">全部</option><option value="A">A组</option><option value="B">B组</option><option value="C">C组</option></select>
+    <label>班主任</label><input id="inpName" placeholder="搜索姓名" style="width:140px">
+    <label>退款口径</label><select id="selRefund"><option value="30">30天</option><option value="90">90天</option></select>
+    <span id="cntInfo" style="color:var(--muted);font-size:12px;margin-left:auto"></span>
+  </div>
+  <div id="app"><div class="loading">正在加载数据...</div></div>
+</div>
+<script src="common.js"></script>
+<script>
+let D=null;
+const procCols = [
+  ['总线索','总线索'],['交付线索','交付线索'],['加微数','加微数'],['加微率','加微率'],
+  ['本期线索预约人数','预约人数'],['预约率','预约率'],
+  ['Day1到课数','D1到课'],['Day1完课数','D1完课'],['Day2到课数','D2到课'],
+  ['Day2完课数','D2完课'],['Day3到课数','D3到课'],['Day3完课数','D3完课'],['问卷率','问卷率']
+];
+(async function(){
+  D = await loadData();
+  if(!D){ document.getElementById('app').innerHTML='<div class="empty">数据未加载</div>'; return; }
+  document.getElementById('subtitle').textContent = `${D.meta.period} · 数据更新于 ${D.meta.generated}`;
+  const sel=document.getElementById('selBoard');
+  sel.innerHTML='<option value="">全部期次</option>'+[...new Set(D.teachers.map(t=>t.code))]
+    .sort().map(c=>`<option value="${c}">${esc(c)}</option>`).join('');
+  ['selBoard','selGroup','inpName','selRefund'].forEach(id=>{
+    document.getElementById(id).addEventListener('input',render);
+  });
+  render();
+})();
+
+function render(){
+  const board=document.getElementById('selBoard').value;
+  const group=document.getElementById('selGroup').value;
+  const name=document.getElementById('inpName').value.trim();
+  const口径=document.getElementById('selRefund').value;
+  let list=D.teachers.filter(t=>
+    (!board||t.code===board) && (!group||(t.board_group||'')===group) && (!name||t.teacher.includes(name))
+  );
+  list.sort((a,b)=>(b.order_amt||0)-(a.order_amt||0));
+  document.getElementById('cntInfo').textContent=`共 ${list.length} 条记录`;
+
+  const refAmtKey = 口径==='30'?'ref_amt30':'ref_amt90';
+  const refCntKey = 口径==='30'?'ref_cnt30':'ref_cnt90';
+  const netKey = 口径==='30'?'net30':'net90';
+
+  let procHead = procCols.map(c=>`<th>${c[1]}</th>`).join('');
+  let rows = list.map(t=>`<tr>
+    <td class="l"><b>${esc(t.teacher)}</b></td>
+    <td class="l">${esc(t.label)}</td>
+    <td class="l">${esc(t.board_group||'')}组 / ${esc(t.group||'')}</td>
+    <td class="l">${t.start_str}~${t.end_str}</td>
+    ${procCols.map(c=>`<td>${esc(t[c[0]]||'-')}</td>`).join('')}
+    <td class="pos">¥${fmtNum(t.order_amt)}</td>
+    <td>${t.order_cnt}</td>
+    <td class="neg">¥${fmtNum(t[refAmtKey])}</td>
+    ${''}
+    <td class="${t[netKey]>=0?'pos':'neg'}">¥${fmtNum(t[netKey])}</td>
+    <td>${esc(t['订单量']||'-')}</td>
+  </tr>`).join('');
+
+  document.getElementById('app').innerHTML = `
+    <div class="card">
+      <h3>明细表（过程数据来自99看板原值 · 结果数据按台账/退款归属计算）</h3>
+      <div class="scroll"><table>
+        <thead><tr>
+          <th class="l">班主任</th><th class="l">期次</th><th class="l">组</th><th class="l">窗口</th>
+          ${procHead}
+          <th>归属出单额</th><th>出单数</th><th>退款(${口径}天)</th><th>净业绩</th><th>99订单量</th>
+        </tr></thead>
+        <tbody>${rows||'<tr><td colspan="30" class="empty">无数据</td></tr>'}</tbody>
+      </table></div>
+      <div class="footnote">净业绩 = 归属出单额 − 退款(${口径}天)；99订单量为期次表原始值，与台账归属口径可能存在差异（见总览说明）。</div>
+    </div>`;
+}
+</script>
+</body>
+</html>

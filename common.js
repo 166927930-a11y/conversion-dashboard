@@ -3,7 +3,7 @@ let _cache = null;
 async function loadData(){
   if(_cache) return _cache;
   try{
-    const r = await fetch('../data.json?t='+Date.now());
+    const r = await fetch('./data.json?t='+Date.now());
     if(!r.ok) return null;
     _cache = await r.json();
     return _cache;

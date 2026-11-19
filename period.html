@@ -46,13 +46,26 @@
   const byTeacher={};
   ts.forEach(t=>{
     const k=t.teacher;
-    if(!byTeacher[k]) byTeacher[k]={name:k,order:0,ref:0,cnt:0,periods:0};
+    if(!byTeacher[k]) byTeacher[k]={name:k,city:t.city||'',group:t.group_full||t.group||'',order:0,ref:0,cnt:0,periods:0};
     byTeacher[k].order+=t.order_amt||0;
     byTeacher[k].ref+=t.ref_amt30||0;
     byTeacher[k].cnt+=t.order_cnt||0;
     byTeacher[k].periods+=1;
   });
   const ranks=Object.values(byTeacher).sort((a,b)=>b.order-a.order);
+
+  // 按具体小组汇总（深圳B2 / 武汉1 / 店播天选B ...）
+  const byGroup={};
+  ts.forEach(t=>{
+    const k=t.group_full||t.group||'未分组';
+    if(!byGroup[k]) byGroup[k]={group:k,city:t.city||'',order:0,ref30:0,ref90:0,cnt:0,members:new Set()};
+    byGroup[k].order+=t.order_amt||0;
+    byGroup[k].ref30+=t.ref_amt30||0;
+    byGroup[k].ref90+=t.ref_amt90||0;
+    byGroup[k].cnt+=t.order_cnt||0;
+    byGroup[k].members.add(t.teacher);
+  });
+  const groups=Object.values(byGroup).sort((a,b)=>b.order-a.order);
 
   document.getElementById('app').innerHTML=`
     <div class="card">
@@ -78,14 +91,33 @@
       </tbody></table></div>
     </div>
     <div class="card">
+      <h3>按具体小组汇总（深圳B2 / 武汉1 / 店播天选B …，按归属出单额排序）</h3>
+      <div class="scroll"><table><thead><tr>
+        <th>排名</th><th class="l">城市</th><th class="l">小组</th><th>人数</th>
+        <th>归属出单额</th><th>出单数</th><th>退款30天</th><th>净业绩</th>
+      </tr></thead><tbody>
+      ${groups.map((g,i)=>`<tr>
+        <td>${i+1}</td>
+        <td class="l">${esc(g.city||'-')}</td>
+        <td class="l"><b>${esc(g.group)}</b></td>
+        <td>${g.members.size}</td>
+        <td class="pos">¥${fmtNum(g.order)}</td>
+        <td>${g.cnt}</td>
+        <td class="neg">¥${fmtNum(g.ref30)}</td>
+        <td class="${g.order-g.ref30>=0?'pos':'neg'}">¥${fmtNum(g.order-g.ref30)}</td>
+      </tr>`).join('')}
+      </tbody></table></div>
+    </div>
+    <div class="card">
       <h3>班主任累计排名（按归属出单额）</h3>
       <div class="scroll"><table><thead><tr>
-        <th>排名</th><th class="l">班主任</th><th>累计出单额</th><th>累计单数</th>
+        <th>排名</th><th class="l">班主任</th><th class="l">城市/小组</th><th>累计出单额</th><th>累计单数</th>
         <th>累计退款30</th><th>累计净业绩</th><th>带班期数</th>
       </tr></thead><tbody>
       ${ranks.map((r,i)=>`<tr>
         <td>${i+1}</td>
         <td class="l"><b>${esc(r.name)}</b></td>
+        <td class="l">${esc(r.group||'-')}</td>
         <td class="pos">¥${fmtNum(r.order)}</td>
         <td>${r.cnt}</td>
         <td class="neg">¥${fmtNum(r.ref)}</td>

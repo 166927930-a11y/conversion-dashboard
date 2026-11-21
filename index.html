@@ -18,17 +18,28 @@
   <a href="period.html">期次对比 + 个人排名</a>
 </nav>
 <div class="wrap">
+  <div class="filterbar" id="monthBar"></div>
   <div id="app"><div class="loading">正在加载数据...</div></div>
 </div>
 <script src="common.js"></script>
 <script>
+let D=null, charts={};
+const state={month:'all'};
 (async function(){
-  const D = await loadData();
+  D = await loadData();
   if(!D){ document.getElementById('app').innerHTML='<div class="empty">数据未加载，请先运行 build_data.py</div>'; return; }
   document.getElementById('subtitle').textContent =
     `${D.meta.period} · 共 ${D.meta.board_count} 期 · 数据更新于 ${D.meta.generated}`;
+  renderMonthBar('monthBar', D, state, render);
+  render('all');
+})();
 
-  const teachers = D.teachers || [];
+function render(){
+  const teachers = byMonth(D, state.month);
+  const label = state.month==='all' ? '全部月份' : (state.month+'月');
+  document.getElementById('monthBarInfo').textContent =
+    `${label} · ${teachers.length} 条班主任期次记录`;
+
   // 汇总（30天口径）
   const sumAmt = teachers.reduce((s,t)=>s+(t.order_amt||0),0);
   const sumOrders = teachers.reduce((s,t)=>s+(t.order_cnt||0),0);
@@ -36,34 +47,45 @@
   const refAmt90 = teachers.reduce((s,t)=>s+(t.ref_amt90||0),0);
   const netAmt = sumAmt - refAmt30;
   const refRate = sumAmt ? (refAmt30/sumAmt*100) : 0;
+  const boardSet = new Set(teachers.map(t=>t.code));
 
-  document.getElementById('app').innerHTML = `
-    <div class="kpis">
-      <div class="kpi red"><div class="label">归属出单金额</div><div class="val">¥${fmtNum(sumAmt)}</div><div class="delta">${sumOrders} 单 · 台账归属口径</div></div>
-      <div class="kpi green"><div class="label">退款金额（30天口径）</div><div class="val">¥${fmtNum(refAmt30)}</div><div class="delta">退款率 ${refRate.toFixed(1)}%</div></div>
-      <div class="kpi"><div class="label">净业绩（出单-退款30）</div><div class="val">¥${fmtNum(netAmt)}</div><div class="delta">90天口径净额 ¥${fmtNum(sumAmt-refAmt90)}</div></div>
-      <div class="kpi"><div class="label">覆盖班主任期次</div><div class="val">${teachers.length}</div><div class="delta">${D.meta.board_count} 个期次表</div></div>
-    </div>
-    <div class="card">
-      <h3>口径说明</h3>
-      <div class="footnote" style="font-size:13px;line-height:1.9">
-        · <b>归属逻辑</b>：订单跟进人（台账 I 列）匹配班主任，且支付时间落入该班主任本期 [开始, 结算) 窗口（结算日 0 点截止，当天不计）。<br>
-        · <b>退款逻辑</b>：一转跟进人（退款表 B 列）匹配班主任，且退款成功时间落入同一窗口；30天/90天 = 下单到退款成功的间隔上限。<br>
-        · <b>过程数据</b>（到课/完课/加微/预约等）来自期次表「99数据看板」，可从「班主任本期表现」页查看。<br>
-        · <b>数据范围</b>：9/10/11 月试点，全部期次 A/B/C 组。
+  if(!document.getElementById('app').querySelector('.kpis')){
+    document.getElementById('app').innerHTML = `
+      <div class="kpis">
+        <div class="kpi red"><div class="label">归属出单金额</div><div class="val" id="kAmt"></div><div class="delta" id="kAmtD"></div></div>
+        <div class="kpi green"><div class="label">退款金额（30天口径）</div><div class="val" id="kRef"></div><div class="delta" id="kRefD"></div></div>
+        <div class="kpi"><div class="label">净业绩（出单-退款30）</div><div class="val" id="kNet"></div><div class="delta" id="kNetD"></div></div>
+        <div class="kpi"><div class="label">覆盖班主任期次</div><div class="val" id="kCnt"></div><div class="delta" id="kCntD"></div></div>
       </div>
-    </div>
-    <div class="grid-2">
-      <div class="card"><h3>各期次归属出单金额</h3><div class="chart-box"><canvas id="chartOrder"></canvas></div></div>
-      <div class="card"><h3>各期次退款金额（30天口径）</h3><div class="chart-box"><canvas id="chartRefund"></canvas></div></div>
-    </div>
-    <div class="card">
-      <h3>本期归属出单 TOP 15 班主任</h3>
-      <div class="scroll"><table id="tblTop"><thead><tr>
-        <th class="l">班主任</th><th class="l">期次</th><th class="l">窗口</th>
-        <th>出单金额</th><th>出单数</th><th>退款30天</th><th>净业绩</th>
-      </tr></thead><tbody></tbody></table></div>
-    </div>`;
+      <div class="card">
+        <h3>口径说明</h3>
+        <div class="footnote" style="font-size:13px;line-height:1.9">
+          · <b>归属逻辑</b>：订单跟进人（台账 I 列）匹配班主任，且支付时间落入该班主任本期 [开始, 结算) 窗口（结算日 0 点截止，当天不计）。<br>
+          · <b>退款逻辑</b>：一转跟进人（退款表 B 列）匹配班主任，且退款成功时间落入同一窗口；30天/90天 = 下单到退款成功的间隔上限。<br>
+          · <b>过程数据</b>（到课/完课/加微/预约等）来自期次表「99数据看板」，可从「班主任本期表现」页查看。<br>
+          · <b>数据范围</b>：9/10/11 月试点，全部期次 A/B/C 组；月份按期次代码前两位归类，可用上方月份筛选切换。
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="card"><h3>各期次归属出单金额</h3><div class="chart-box"><canvas id="chartOrder"></canvas></div></div>
+        <div class="card"><h3>各期次退款金额（30天口径）</h3><div class="chart-box"><canvas id="chartRefund"></canvas></div></div>
+      </div>
+      <div class="card">
+        <h3>本期归属出单 TOP 15 班主任</h3>
+        <div class="scroll"><table id="tblTop"><thead><tr>
+          <th class="l">班主任</th><th class="l">期次</th><th class="l">窗口</th>
+          <th>出单金额</th><th>出单数</th><th>退款30天</th><th>净业绩</th>
+        </tr></thead><tbody></tbody></table></div>
+      </div>`;
+  }
+  document.getElementById('kAmt').textContent='¥'+fmtNum(sumAmt);
+  document.getElementById('kAmtD').textContent=sumOrders+' 单 · 台账归属口径';
+  document.getElementById('kRef').textContent='¥'+fmtNum(refAmt30);
+  document.getElementById('kRefD').textContent='退款率 '+refRate.toFixed(1)+'%';
+  document.getElementById('kNet').textContent='¥'+fmtNum(netAmt);
+  document.getElementById('kNetD').textContent='90天口径净额 ¥'+fmtNum(sumAmt-refAmt90);
+  document.getElementById('kCnt').textContent=teachers.length;
+  document.getElementById('kCntD').textContent=boardSet.size+' 个期次表';
 
   // 期次汇总
   const byBoard = {};
@@ -77,20 +99,21 @@
   const boards = Object.values(byBoard).sort((a,b)=>a.code.localeCompare(b.code));
   const labels = boards.map(b=>b.code.slice(0,4));
 
-  new Chart(document.getElementById('chartOrder'), {
+  if(charts.order) charts.order.destroy();
+  if(charts.refund) charts.refund.destroy();
+  charts.order = new Chart(document.getElementById('chartOrder'), {
     type:'bar',
     data:{labels, datasets:[{label:'出单金额',data:boards.map(b=>Math.round(b.order)),backgroundColor:'#d92626',borderRadius:4}]},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>'¥'+(v/1000)+'k'}}}}
   });
-  new Chart(document.getElementById('chartRefund'), {
+  charts.refund = new Chart(document.getElementById('chartRefund'), {
     type:'bar',
     data:{labels, datasets:[{label:'退款30天',data:boards.map(b=>Math.round(b.ref)),backgroundColor:'#0e9f6e',borderRadius:4}]},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>'¥'+(v/1000)+'k'}}}}
   });
 
   const top = [...teachers].sort((a,b)=>(b.order_amt||0)-(a.order_amt||0)).slice(0,15);
-  const tbody = document.querySelector('#tblTop tbody');
-  tbody.innerHTML = top.map(t=>`<tr>
+  document.querySelector('#tblTop tbody').innerHTML = top.map(t=>`<tr>
     <td class="l"><b>${esc(t.teacher)}</b></td>
     <td class="l">${esc(t.label)} ${esc(t.group_full||t.group||'')}</td>
     <td class="l">${t.start_str}~${t.end_str}</td>
@@ -99,7 +122,7 @@
     <td class="neg">¥${fmtNum(t.ref_amt30)}</td>
     <td class="${t.net30>=0?'pos':'neg'}">¥${fmtNum(t.net30)}</td>
   </tr>`).join('');
-})();
+}
 </script>
 </body>
 </html>

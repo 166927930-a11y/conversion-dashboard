@@ -18,17 +18,52 @@
   <a href="period.html" class="active">期次对比 + 个人排名</a>
 </nav>
 <div class="wrap">
+  <div class="filterbar" id="monthBar"></div>
   <div id="app"><div class="loading">正在加载数据...</div></div>
 </div>
 <script src="common.js"></script>
 <script>
+let D=null, chartCompare=null, chartTrace=null;
+const state={month:'all', metric:'order_amt', traceTeacher:''};
+const METRICS=[
+  ['order_amt','归属出单额'],['order_cnt','出单数'],['ref_amt30','退款30天'],
+  ['net30','净业绩30'],['总线索','总线索'],['加微率','加微率'],
+  ['本期线索预约人数','预约人数'],['Day1到课率','D1到课率'],['Day3完课率','D3完课率']
+];
 (async function(){
-  const D = await loadData();
+  D = await loadData();
   if(!D){ document.getElementById('app').innerHTML='<div class="empty">数据未加载</div>'; return; }
   document.getElementById('subtitle').textContent=`${D.meta.period} · 数据更新于 ${D.meta.generated}`;
-  const ts=D.teachers||[];
+  renderMonthBar('monthBar', D, state, render);
+  render();
+})();
 
-  // 期次汇总
+// 数值格式化（率类字段显示为百分比）
+function cellFmt(metric, v){
+  if(v==null||v==='') return '-';
+  if(/率$/.test(metric)){
+    const n=Number(String(v).replace('%',''));
+    if(!isNaN(n)) return (n>1?n:n*100).toFixed(1)+'%';
+  }
+  if(metric==='order_amt'||metric==='ref_amt30'||metric==='net30')
+    return '¥'+fmtNum(v);
+  return esc(v);
+}
+function metricVal(t, metric){
+  const v=t[metric];
+  if(/率$/.test(metric)){
+    const n=Number(String(v==null?'':v).replace('%',''));
+    return isNaN(n)?0:(n>1?n:n*100);
+  }
+  return Number(v||0);
+}
+
+function render(){
+  const ts = byMonth(D, state.month);
+  const label = state.month==='all'?'全部月份':(state.month+'月');
+  document.getElementById('monthBarInfo').textContent=`${label} · ${ts.length} 条记录`;
+
+  // ===== 期次汇总 =====
   const byBoard={};
   ts.forEach(t=>{
     const k=t.code;
@@ -40,13 +75,13 @@
     byBoard[k].teachers.add(t.teacher);
   });
   const boards=Object.values(byBoard).sort((a,b)=>a.code.localeCompare(b.code));
-  const labels=boards.map(b=>b.code.slice(0,4));
+  const blabels=boards.map(b=>b.code.slice(0,4));
 
-  // 个人累计（跨期次汇总，30天口径）
+  // ===== 个人累计（跨期次汇总，30天口径）=====
   const byTeacher={};
   ts.forEach(t=>{
     const k=t.teacher;
-    if(!byTeacher[k]) byTeacher[k]={name:k,city:t.city||'',group:t.group_full||t.group||'',order:0,ref:0,cnt:0,periods:0};
+    if(!byTeacher[k]) byTeacher[k]={name:k,city:t.city||'',group:t.group_full||t.group||'',active:t.active||0,order:0,ref:0,cnt:0,periods:0};
     byTeacher[k].order+=t.order_amt||0;
     byTeacher[k].ref+=t.ref_amt30||0;
     byTeacher[k].cnt+=t.order_cnt||0;
@@ -54,18 +89,29 @@
   });
   const ranks=Object.values(byTeacher).sort((a,b)=>b.order-a.order);
 
-  // 按具体小组汇总（深圳B2 / 武汉1 / 店播天选B ...）
+  // ===== 按小组汇总 =====
   const byGroup={};
   ts.forEach(t=>{
     const k=t.group_full||t.group||'未分组';
-    if(!byGroup[k]) byGroup[k]={group:k,city:t.city||'',order:0,ref30:0,ref90:0,cnt:0,members:new Set()};
+    if(!byGroup[k]) byGroup[k]={group:k,city:t.city||'',order:0,ref30:0,cnt:0,members:new Set()};
     byGroup[k].order+=t.order_amt||0;
     byGroup[k].ref30+=t.ref_amt30||0;
-    byGroup[k].ref90+=t.ref_amt90||0;
     byGroup[k].cnt+=t.order_cnt||0;
     byGroup[k].members.add(t.teacher);
   });
   const groups=Object.values(byGroup).sort((a,b)=>b.order-a.order);
+
+  // ===== 在职人 × 期次 矩阵 =====
+  const activeSet=new Set((D.active_names||[]).filter(n=>byTeacher[n])); // 在职且本期有数据
+  // 若筛选后无数据，回退为：记录中标记为 active 的人
+  if(activeSet.size===0) ts.filter(t=>t.active).forEach(t=>activeSet.add(t.teacher));
+  const activeList=[...activeSet].sort((a,b)=>(byTeacher[b]?.order||0)-(byTeacher[a]?.order||0));
+  const periodCodes=[...new Set(ts.map(t=>t.code))].sort(); // 矩阵列
+  // teacher -> code -> record
+  const grid={};
+  ts.forEach(t=>{ if(activeSet.has(t.teacher)){ grid[t.teacher]=grid[t.teacher]||{}; grid[t.teacher][t.code]=t; } });
+  if(state.traceTeacher && !grid[state.traceTeacher]) state.traceTeacher='';
+  if(!state.traceTeacher && activeList.length) state.traceTeacher=activeList[0];
 
   document.getElementById('app').innerHTML=`
     <div class="card">
@@ -90,6 +136,44 @@
       </tr>`).join('')}
       </tbody></table></div>
     </div>
+
+    <div class="card">
+      <h3>每个在职人的所有期次对比（${activeList.length} 人在职）</h3>
+      <div class="controls" style="margin-bottom:12px">
+        <label>对比指标</label>
+        <select id="selMetric">${METRICS.map(m=>`<option value="${m[0]}" ${state.metric===m[0]?'selected':''}>${m[1]}</option>`).join('')}</select>
+        <span style="color:var(--muted);font-size:12px">行=在职班主任，列=期次；点击姓名查看该人跨期次趋势</span>
+      </div>
+      <div class="scroll" style="max-height:520px"><table id="tblMatrix"><thead><tr>
+        <th class="l">在职班主任</th><th class="l">小组</th><th>期次数</th><th>累计</th>
+        ${periodCodes.map(c=>`<th>${esc(c.slice(0,4))}</th>`).join('')}
+      </tr></thead><tbody>
+      ${activeList.map(n=>{
+        const tb=byTeacher[n]||{};
+        const row=grid[n]||{};
+        const total=periodCodes.reduce((s,c)=>s+(row[c]?metricVal(row[c],state.metric):0),0);
+        const totalTxt=/率$/.test(state.metric)?(total/periodCodes.filter(c=>row[c]).length||0).toFixed(1)+'%':fmtNum(total);
+        return `<tr data-name="${esc(n)}" style="cursor:pointer">
+          <td class="l"><b>${esc(n)}</b></td>
+          <td class="l">${esc(tb.group||'-')}</td>
+          <td>${periodCodes.filter(c=>row[c]).length}</td>
+          <td class="pos">${totalTxt}</td>
+          ${periodCodes.map(c=>`<td>${row[c]?cellFmt(state.metric,row[c][state.metric]):'-'}</td>`).join('')}
+        </tr>`;
+      }).join('')||'<tr><td colspan="20" class="empty">当前筛选下无在职班主任数据</td></tr>'}
+      </tbody></table></div>
+      <div class="footnote">在职名单来自月度员工看板排名表（${esc(D.meta.active_source||'')}，共 ${D.meta.active_count||0} 人）；仅展示在当前筛选中有期次数据的在职人员。率类指标为各期原始值，累计列取均值。</div>
+    </div>
+
+    <div class="card">
+      <h3>单个在职人跨期次趋势</h3>
+      <div class="controls" style="margin-bottom:8px">
+        <label>班主任</label>
+        <select id="selTrace">${activeList.map(n=>`<option value="${esc(n)}" ${state.traceTeacher===n?'selected':''}>${esc(n)}</option>`).join('')}</select>
+      </div>
+      <div class="chart-box"><canvas id="chartTrace"></canvas></div>
+    </div>
+
     <div class="card">
       <h3>按具体小组汇总（深圳B2 / 武汉1 / 店播天选B …，按归属出单额排序）</h3>
       <div class="scroll"><table><thead><tr>
@@ -116,7 +200,7 @@
       </tr></thead><tbody>
       ${ranks.map((r,i)=>`<tr>
         <td>${i+1}</td>
-        <td class="l"><b>${esc(r.name)}</b></td>
+        <td class="l"><b>${esc(r.name)}</b>${r.active?' <span class="tag tag-a">在职</span>':''}</td>
         <td class="l">${esc(r.group||'-')}</td>
         <td class="pos">¥${fmtNum(r.order)}</td>
         <td>${r.cnt}</td>
@@ -127,9 +211,11 @@
       </tbody></table></div>
     </div>`;
 
-  new Chart(document.getElementById('chartCompare'),{
+  // 图表：各期次对比
+  if(chartCompare) chartCompare.destroy();
+  chartCompare = new Chart(document.getElementById('chartCompare'),{
     type:'bar',
-    data:{labels,datasets:[
+    data:{labels:blabels,datasets:[
       {label:'出单金额',data:boards.map(b=>Math.round(b.order)),backgroundColor:'#d92626',borderRadius:3},
       {label:'退款30天',data:boards.map(b=>Math.round(b.ref30)),backgroundColor:'#0e9f6e',borderRadius:3},
       {label:'退款90天',data:boards.map(b=>Math.round(b.ref90)),backgroundColor:'#7c3aed',borderRadius:3}
@@ -138,7 +224,41 @@
       plugins:{legend:{position:'top'}},
       scales:{y:{ticks:{callback:v=>'¥'+(v/1000)+'k'}}}}
   });
-})();
+
+  // 趋势图
+  renderTrace(activeList, grid, periodCodes);
+
+  // 事件
+  document.getElementById('selMetric').addEventListener('change',e=>{ state.metric=e.target.value; render(); });
+  document.getElementById('selTrace').addEventListener('change',e=>{ state.traceTeacher=e.target.value; renderTrace(activeList,grid,periodCodes); });
+  document.querySelectorAll('#tblMatrix tbody tr[data-name]').forEach(tr=>{
+    tr.addEventListener('click',()=>{ state.traceTeacher=tr.dataset.name;
+      const sel=document.getElementById('selTrace'); if(sel) sel.value=state.traceTeacher;
+      renderTrace(activeList,grid,periodCodes);
+      document.getElementById('chartTrace').scrollIntoView({behavior:'smooth',block:'center'});
+    });
+  });
+}
+
+function renderTrace(activeList, grid, periodCodes){
+  const name=state.traceTeacher;
+  if(!name || !grid[name]) return;
+  const recs=periodCodes.map(c=>grid[name][c]).filter(Boolean)
+    .sort((a,b)=>(a.code||'').localeCompare(b.code||''));
+  const labels=recs.map(r=>(r.label||r.code||'').replace('期',''));
+  if(chartTrace) chartTrace.destroy();
+  chartTrace=new Chart(document.getElementById('chartTrace'),{
+    type:'line',
+    data:{labels,datasets:[
+      {label:'归属出单额',data:recs.map(r=>r.order_amt||0),borderColor:'#d92626',backgroundColor:'rgba(217,38,38,.08)',tension:.3,fill:false,yAxisID:'y'},
+      {label:'退款30天',data:recs.map(r=>r.ref_amt30||0),borderColor:'#0e9f6e',backgroundColor:'rgba(14,159,110,.08)',tension:.3,fill:false,yAxisID:'y'},
+      {label:'净业绩30',data:recs.map(r=>r.net30||0),borderColor:'#2563eb',backgroundColor:'rgba(37,99,235,.08)',tension:.3,fill:false,yAxisID:'y'}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+      plugins:{legend:{position:'top'},title:{display:true,text:(name||'')+' · 各期次业绩趋势'}},
+      scales:{y:{ticks:{callback:v=>'¥'+(v/1000)+'k'}}}}
+  });
+}
 </script>
 </body>
 </html>

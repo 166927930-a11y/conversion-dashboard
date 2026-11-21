@@ -17,6 +17,7 @@
   <a href="period.html">期次对比 + 个人排名</a>
 </nav>
 <div class="wrap">
+  <div class="filterbar" id="monthBar"></div>
   <div class="controls">
     <label>期次</label><select id="selBoard"></select>
     <label>城市</label><select id="selCity"><option value="">全部</option></select>
@@ -30,6 +31,7 @@
 <script src="common.js"></script>
 <script>
 let D=null;
+const state={month:'all'};
 const procCols = [
   ['总线索','总线索'],['交付线索','交付线索'],['加微数','加微数'],['加微率','加微率'],
   ['本期线索预约人数','预约人数'],['预约率','预约率'],
@@ -40,27 +42,41 @@ const procCols = [
   D = await loadData();
   if(!D){ document.getElementById('app').innerHTML='<div class="empty">数据未加载</div>'; return; }
   document.getElementById('subtitle').textContent = `${D.meta.period} · 数据更新于 ${D.meta.generated}`;
-  const sel=document.getElementById('selBoard');
-  sel.innerHTML='<option value="">全部期次</option>'+[...new Set(D.teachers.map(t=>t.code))]
-    .sort().map(c=>`<option value="${c}">${esc(c)}</option>`).join('');
-  // 城市下拉
-  const citySel=document.getElementById('selCity');
-  const cities=[...new Set(D.teachers.map(t=>t.city).filter(Boolean))].sort();
-  citySel.innerHTML='<option value="">全部城市</option>'+cities.map(c=>`<option value="${c}">${esc(c)}</option>`).join('');
-  // 小组下拉（group_full 具体小组名，如 深圳B2 / 武汉1 / 店播天选B）
-  fillGroups();
-  citySel.addEventListener('change',fillGroups);
-  ['selBoard','selGroup','inpName','selRefund'].forEach(id=>{
+  renderMonthBar('monthBar', D, state, onMonthChange);
+  ['selBoard','selCity','selGroup','inpName','selRefund'].forEach(id=>{
     document.getElementById(id).addEventListener('input',render);
   });
+  buildSelects();
   render();
 })();
 
+function onMonthChange(){
+  buildSelects();
+  render();
+}
+
+function buildSelects(){
+  const scoped = byMonth(D, state.month);
+  const prevBoard=document.getElementById('selBoard').value;
+  const boards=[...new Set(scoped.map(t=>t.code))].sort();
+  const sel=document.getElementById('selBoard');
+  sel.innerHTML='<option value="">全部期次</option>'+boards.map(c=>`<option value="${c}">${esc(c)}</option>`).join('');
+  if(boards.includes(prevBoard)) sel.value=prevBoard;
+
+  const citySel=document.getElementById('selCity');
+  const prevCity=citySel.value;
+  const cities=[...new Set(scoped.map(t=>t.city).filter(Boolean))].sort();
+  citySel.innerHTML='<option value="">全部城市</option>'+cities.map(c=>`<option value="${c}">${esc(c)}</option>`).join('');
+  if(cities.includes(prevCity)) citySel.value=prevCity;
+  fillGroups();
+}
+
 function fillGroups(){
+  const scoped = byMonth(D, state.month);
   const city=document.getElementById('selCity').value;
   const sel=document.getElementById('selGroup');
   const prev=sel.value;
-  const groups=[...new Set(D.teachers.filter(t=>!city||t.city===city).map(t=>t.group_full).filter(Boolean))]
+  const groups=[...new Set(scoped.filter(t=>!city||t.city===city).map(t=>t.group_full).filter(Boolean))]
     .sort((a,b)=>a.localeCompare(b,'zh'));
   sel.innerHTML='<option value="">全部小组</option>'+groups.map(g=>`<option value="${g}">${esc(g)}</option>`).join('');
   if(groups.includes(prev)) sel.value=prev;
@@ -71,21 +87,21 @@ function render(){
   const city=document.getElementById('selCity').value;
   const group=document.getElementById('selGroup').value;
   const name=document.getElementById('inpName').value.trim();
-  const口径=document.getElementById('selRefund').value;
-  let list=D.teachers.filter(t=>
+  const koujing=document.getElementById('selRefund').value;
+  let list=byMonth(D,state.month).filter(t=>
     (!board||t.code===board) && (!city||(t.city||'')===city) &&
     (!group||(t.group_full||'')===group) && (!name||t.teacher.includes(name))
   );
   list.sort((a,b)=>(b.order_amt||0)-(a.order_amt||0));
-  document.getElementById('cntInfo').textContent=`共 ${list.length} 条记录`;
+  const label = state.month==='all'?'全部月份':(state.month+'月');
+  document.getElementById('cntInfo').textContent=`${label} · 共 ${list.length} 条记录`;
 
-  const refAmtKey = 口径==='30'?'ref_amt30':'ref_amt90';
-  const refCntKey = 口径==='30'?'ref_cnt30':'ref_cnt90';
-  const netKey = 口径==='30'?'net30':'net90';
+  const refAmtKey = koujing==='30'?'ref_amt30':'ref_amt90';
+  const netKey = koujing==='30'?'net30':'net90';
 
   let procHead = procCols.map(c=>`<th>${c[1]}</th>`).join('');
   let rows = list.map(t=>`<tr>
-    <td class="l"><b>${esc(t.teacher)}</b></td>
+    <td class="l"><b>${esc(t.teacher)}</b>${t.active?' <span class="tag tag-a">在职</span>':''}</td>
     <td class="l">${esc(t.label)}</td>
     <td class="l">${esc(t.group_full||t.group||'-')}</td>
     <td class="l">${t.start_str}~${t.end_str}</td>
@@ -93,7 +109,6 @@ function render(){
     <td class="pos">¥${fmtNum(t.order_amt)}</td>
     <td>${t.order_cnt}</td>
     <td class="neg">¥${fmtNum(t[refAmtKey])}</td>
-    ${''}
     <td class="${t[netKey]>=0?'pos':'neg'}">¥${fmtNum(t[netKey])}</td>
     <td>${esc(t['订单量']||'-')}</td>
   </tr>`).join('');
@@ -105,11 +120,11 @@ function render(){
         <thead><tr>
           <th class="l">班主任</th><th class="l">期次</th><th class="l">组</th><th class="l">窗口</th>
           ${procHead}
-          <th>归属出单额</th><th>出单数</th><th>退款(${口径}天)</th><th>净业绩</th><th>99订单量</th>
+          <th>归属出单额</th><th>出单数</th><th>退款(${koujing}天)</th><th>净业绩</th><th>99订单量</th>
         </tr></thead>
         <tbody>${rows||'<tr><td colspan="30" class="empty">无数据</td></tr>'}</tbody>
       </table></div>
-      <div class="footnote">净业绩 = 归属出单额 − 退款(${口径}天)；99订单量为期次表原始值，与台账归属口径可能存在差异（见总览说明）。</div>
+      <div class="footnote">净业绩 = 归属出单额 − 退款(${koujing}天)；99订单量为期次表原始值，与台账归属口径可能存在差异（见总览说明）。「在职」标识来自月度员工看板排名表。</div>
     </div>`;
 }
 </script>
